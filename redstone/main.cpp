@@ -6,19 +6,21 @@
 
 
 namespace Redstone {
-    class Redstone {
+    class Component {
         public:
             std::string type;
             int intensity;
-            Redstone* up;
-            Redstone* down;
-            Redstone* left;
-            Redstone* right;
+            Component* up;
+            Component* down;
+            Component* left;
+            Component* right;
+			int direction = 0;
             
-            virtual bool is_linkable(std::string T) = 0;
+            virtual bool is_linkable(Component* other, int side) = 0;
+			virtual void spread(int intensity) {}
     };
 
-    class Powder : public Redstone {
+    class Powder : public Component {
         public:
             Powder() {
                 type = "POWDER";
@@ -28,42 +30,95 @@ namespace Redstone {
                 left = nullptr;
                 right = nullptr;
             }
-            bool is_linkable(std::string T) {
-                if(T == "POWDER")
+            bool is_linkable(Component* other, int side) {
+                if(other->type == "POWDER")
                     return true;
+				else if(other->type == "REPEATER" && other->direction == side)
+					return true;
                 else
                     return false;
             }
+			void spread(int intensity) {
+				this->intensity = intensity;
+				if(this->intensity > 1) {
+					if(this->up != nullptr) {
+						if(this->intensity - 1 > this->up->intensity)
+							this->up->spread(this->intensity - 1);
+					}
+					if(this->down != nullptr) {
+						if(this->intensity - 1 > this->down->intensity)
+							this->down->spread(this->intensity - 1);
+					}
+					if(this->left != nullptr) {
+						if(this->intensity - 1 > this->left->intensity)
+							this->left->spread(this->intensity - 1);
+					}
+					if(this->right != nullptr) {
+						if(this->intensity - 1 > this->right->intensity)
+							this->right->spread(this->intensity - 1);
+					}
+				}
+			}
     };
+
+	class Repeater : public Component {
+		public:
+            Repeater(int orientation) {
+                type = "REPEATER";
+                intensity = 0;
+                up = nullptr;
+                down = nullptr;
+                left = nullptr;
+                right = nullptr;
+				direction = orientation;
+			}
+            bool is_linkable(Component* other, int side) {
+				if(side == direction) {
+	                if(other->type == "POWDER")
+	                    return true;
+					else if(other->type == "REPEATER" && other->direction == side)
+						return true;
+				}
+                return false;
+            }
+			void spread(int intensity) {
+				this->intensity = 15;
+				if(direction == 0) {
+					if(this->up != nullptr)
+						this->up->spread(this->intensity);
+				}
+			}
+	};
 }
 
 template <int v, int h>
 class PlayGround {
     private:
-        // Cross of powders (20 x 20)
-        std::array<std::array<Redstone::Redstone*, h>, v> grid;
+        std::array<std::array<Redstone::Component*, h>, v> grid;
 
-        bool in(std::vector<std::array<int, 2>> powders, int x, int y) {
-            for(int i = 0; i < powders.size(); i++) {
-                if(powders[i][0] == x && powders[i][1] == y)
+        bool in(std::vector<std::array<int, 2>> coords, int x, int y) {
+            for(int i = 0; i < coords.size(); i++) {
+                if(coords[i][0] == x && coords[i][1] == y)
                     return true;
             }
             return false;
         }
 
     public:
-        PlayGround(std::vector<std::array<int, 2>> powders) {
+        PlayGround(std::vector<std::array<int, 2>> powders, std::vector<std::array<int, 2>> repeaters) {
             for(int i = 0; i < v; i++) {
                 for(int j = 0; j < h; j++) {
                     if(in(powders, i, j))
                         grid[i][j] = new Redstone::Powder();
+					else if(in(repeaters, i, j))
+						grid[i][j] = new Redstone::Repeater(3);
                     else
                         grid[i][j] = nullptr;
                 }
             }
         }
 
-        void link_powders() {
+        void link() {
             for(int i = 0; i < v; i++) {
                 for(int j = 0; j < h; j++) {
                     if(grid[i][j] == nullptr)
@@ -71,34 +126,38 @@ class PlayGround {
                     // UP
                     if(i == 0)
                         grid[i][j]->up = nullptr;
-                    else if(grid[i - 1][j] == nullptr || !grid[i - 1][j]->is_linkable("POWDER"))
+                    else if(grid[i - 1][j] == nullptr || !grid[i - 1][j]->is_linkable(grid[i][j], 0))
                         grid[i][j]->up = nullptr;
                     else
                         grid[i][j]->up = grid[i - 1][j];
                     // DOWN
                     if(i == v - 1)
                         grid[i][j]->down = nullptr;
-                    else if(grid[i + 1][j] == nullptr || !grid[i + 1][j]->is_linkable("POWDER"))
+                    else if(grid[i + 1][j] == nullptr || !grid[i + 1][j]->is_linkable(grid[i][j], 1))
                         grid[i][j]->down = nullptr;
                     else
                         grid[i][j]->down = grid[i + 1][j];
                     // LEFT
                     if(j == 0)
                         grid[i][j]->left = nullptr;
-                    else if(grid[i][j - 1] == nullptr || !grid[i][j - 1]->is_linkable("POWDER"))
+                    else if(grid[i][j - 1] == nullptr || !grid[i][j - 1]->is_linkable(grid[i][j], 2))
                         grid[i][j]->left = nullptr;
                     else
                         grid[i][j]->left = grid[i][j - 1];
                     // RIGHT
                     if(j == h - 1)
                         grid[i][j]->right = nullptr;
-                    else if(grid[i][j + 1] == nullptr || !grid[i][j + 1]->is_linkable("POWDER"))
+                    else if(grid[i][j + 1] == nullptr || !grid[i][j + 1]->is_linkable(grid[i][j], 3))
                         grid[i][j]->right = nullptr;
                     else
                         grid[i][j]->right = grid[i][j + 1];
                 }
             }
         }
+
+		void power(int x, int y) {
+			grid[x][y]->spread(15);
+		}
 
         void print() {
             for(int i = 0; i < v; i++) {
@@ -117,6 +176,7 @@ class PlayGround {
                 std::cout << "-" << std::endl;
                 return;
             }
+			std::cout << "Intensity : " << grid[pos[0]][pos[1]]->intensity << std::endl;
             if(grid[pos[0]][pos[1]]->up != nullptr)
                 std::cout << "Linked UP" << std::endl;
             if(grid[pos[0]][pos[1]]->down != nullptr)
@@ -129,8 +189,9 @@ class PlayGround {
 };
 
 int main() {
-    PlayGround pg = PlayGround<20, 20>({{0, 0}, {0, 1}, {0, 2}, {1, 1}, {1, 2}, {2, 1}, {2, 2}, {3, 1}, {3, 2}, {4, 1}, {4, 2}, {5, 1}, {5, 2}, {6, 1}, {6, 2}, {7, 1}, {7, 2}, {8, 1}, {8, 2}, {9, 1}, {9, 2}, {10, 1}, {10, 2}, {11, 1}, {11, 2}, {12, 1}, {12, 2}, {13, 1}, {13, 2}, {14, 1}, {14, 2}, {15, 1}, {15, 2}, {16, 1}, {16, 2}, {17, 1}, {17, 2}, {18, 1}, {18, 2}, {19, 1}, {19, 2}});
-    pg.link_powders();
+    PlayGround<20, 20> pg = PlayGround<20, 20>({{0, 0}, {0, 2}}, {{0, 1}});
+    pg.link();
+	pg.power(0, 0);
     pg.print();
     for(int i = 0; i < 20; i++) {
         for(int j = 0; j < 20; j++) {
